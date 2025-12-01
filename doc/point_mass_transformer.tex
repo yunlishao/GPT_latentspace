@@ -1,0 +1,160 @@
+\documentclass[11pt]{article}
+\usepackage{amsmath, amssymb, amsfonts}
+\usepackage{graphicx}
+\usepackage{algorithm}
+\usepackage{algorithmic}
+\usepackage{hyperref}
+\usepackage{bm}
+
+\title{A Minimal GPT-Style Model for Learning and Visualizing Latent Representations of Simple Physical Dynamics}
+\author{Your Name}
+\date{}
+
+\begin{document}
+
+\maketitle
+
+\begin{abstract}
+This document presents a minimal prototype of a GPT-style Transformer model trained to predict the dynamics of a simple 1D physical system.  
+We outline the physics, data generation, model architecture, and a method to visualize how the model's latent representations vary as the underlying physics parameter changes.  
+This prototype serves as an illustrative tool for understanding how large language models internally represent dynamics and structure in a fixed-dimensional latent space.
+\end{abstract}
+
+\section{Introduction}
+
+Transformers operate by mapping an input sequence into a sequence of vectors in a fixed-dimensional latent space (e.g., $\mathbb{R}^{4096}$).  
+Although the dimensionality is fixed, the actual \emph{latent state} depends entirely on the input context and evolves layer-by-layer.
+
+To understand how changes in a physical system influence changes in a model's latent space, we construct a small GPT-style model that predicts the next state of a simple dynamical system.  
+We then visualize the hidden representations using PCA or t-SNE.
+
+\section{Simple Physics: 1D Constant-Acceleration System}
+
+Consider a 1D particle with position $x_k$, velocity $v_k$, and constant acceleration $a$.
+Using a fixed time step $\Delta t$, the dynamics are:
+\begin{align}
+    v_{k+1} &= v_k + a \Delta t, \\
+    x_{k+1} &= x_k + v_k \Delta t.
+\end{align}
+
+For each trajectory, we randomly sample:
+\begin{itemize}
+    \item initial state $(x_0, v_0)$,
+    \item physical parameter $a \in \{-1.0, -0.5, 0.5, 1.0\}$,
+    \item horizon length $T$ (e.g., $T=16$).
+\end{itemize}
+
+The model receives as input the sequence:
+\[
+s_k = [x_k, v_k, a],
+\]
+and is trained to predict the next state $[x_{k+1}, v_{k+1}]$ at each time step.
+
+\section{Data Generation}
+
+A single trajectory is generated as:
+\begin{align}
+    v_{k+1} &= v_k + a \Delta t, \\
+    x_{k+1} &= x_k + v_k \Delta t,
+\end{align}
+for $k=0,\dots,T-1$, where $a$ is fixed for the entire trajectory.
+
+The dataset consists of many such trajectories, each labeled by the underlying physics parameter $a$.
+
+\section{GPT-Style Model Architecture}
+
+Let $d_{\text{model}}$ be the Transformer hidden dimension (e.g., $d_{\text{model}} = 64$).  
+The architecture contains:
+
+\begin{itemize}
+    \item An input projection $W_{\text{in}}: \mathbb{R}^3 \rightarrow \mathbb{R}^{d_{\text{model}}}$,
+    \item Learned positional embeddings $\mathbf{p}_k \in \mathbb{R}^{d_{\text{model}}}$,
+    \item A stack of $L$ Transformer encoder layers with causal masking,
+    \item An output head $W_{\text{out}}: \mathbb{R}^{d_{\text{model}}} \rightarrow \mathbb{R}^2$ to predict $[x_{k+1}, v_{k+1}]$.
+\end{itemize}
+
+Given an input sequence $X \in \mathbb{R}^{T\times 3}$, the model computes:
+\begin{align}
+    H_0 &= W_{\text{in}} X + P, \\
+    H_\ell &= \text{TransformerLayer}(H_{\ell-1}), \quad \ell=1,\dots,L, \\
+    \hat{Y} &= W_{\text{out}} H_L,
+\end{align}
+where $P$ contains the positional embeddings.
+
+The hidden tensor $H_L \in \mathbb{R}^{T\times d_{\text{model}}}$ is the final latent representation for all time steps.
+
+\section{Training Objective}
+
+We train the model with mean squared error (MSE):
+\begin{align}
+    \mathcal{L}
+    = \frac{1}{BT} \sum_{b=1}^B \sum_{k=1}^T 
+    \left\| \hat{y}_{b,k} - y_{b,k} \right\|^2,
+\end{align}
+where $B$ is batch size and $T$ is sequence length.
+
+\section{Extracting Latent States}
+
+After training, we freeze the model and extract hidden states $H_L$ for many trajectories under different physical parameters $a$.  
+Let each hidden state for time step $k$ be denoted:
+\[
+h_k \in \mathbb{R}^{d_{\text{model}}}.
+\]
+
+Collect all hidden states for all trajectories into a matrix:
+\[
+\mathbf{H} \in \mathbb{R}^{N \times d_{\text{model}}},
+\]
+where $N$ is the total number of collected time-step embeddings.
+
+\section{Latent Space Visualization}
+
+To visualize how different physics settings produce different latent representations, we apply PCA or t-SNE:
+\begin{align}
+    \mathbf{Z} = \text{PCA}(\mathbf{H}), \qquad \mathbf{Z} \in \mathbb{R}^{N \times 2}.
+\end{align}
+
+We then plot $\mathbf{Z}$, coloring each point by:
+\begin{itemize}
+    \item the underlying physics parameter $a$, or
+    \item the time step $k$, or
+    \item the layer index (if collecting multi-layer states).
+\end{itemize}
+
+Empirically, one typically observes:
+\begin{itemize}
+    \item clustering or distinct manifolds corresponding to different physics parameters $a$,
+    \item temporal structure forming smooth trajectories in the latent space,
+    \item deeper layers exhibit stronger separation and structure.
+\end{itemize}
+
+\section{Figure Placeholders}
+
+\begin{figure}[h]
+\centering
+% include image if present, otherwise show a framed placeholder box so compilation won't stop
+\IfFileExists{latent_pca_placeholder.png}{%
+    \includegraphics[width=0.6\textwidth]{latent_pca_placeholder.png}%
+}{%
+    \fbox{\parbox[b][0.25\textheight][c]{0.6\textwidth}{\centering Missing image: \texttt{latent\_pca\_placeholder.png}}}%
+}
+\caption{Example PCA visualization of hidden states colored by acceleration $a$.}
+\end{figure}
+
+\begin{figure}[h]
+\centering
+% include image if present, otherwise show a framed placeholder box so compilation won't stop
+\IfFileExists{time_structure_placeholder.png}{%
+    \includegraphics[width=0.6\textwidth]{time_structure_placeholder.png}%
+}{%
+    \fbox{\parbox[b][0.25\textheight][c]{0.6\textwidth}{\centering Missing image: \texttt{time\_structure\_placeholder.png}}}%
+}
+\caption{Temporal progression of latent states for a fixed $a$.}
+\end{figure}
+
+\section{Conclusion}
+
+This minimal Transformer-based experiment demonstrates how a GPT-style model embeds physical dynamics inside its fixed-dimensional latent space.  
+By visualizing these hidden representations under different physical parameters, we gain intuition for how large language models internally encode structured, dynamic information.
+
+\end{document}
